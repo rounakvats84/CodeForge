@@ -12,8 +12,36 @@ async function processSubmission(submission: string) {
 
     const { code, language, problemId } = JSON.parse(submission);
 
-    const input = "2 4";
-    const expectedOutput = "6";
+    const testCases = [
+    {
+        input: "2 3",
+        expectedOutput: "5"
+    },
+    {
+        input: "10 20",
+        expectedOutput: "30"
+    },
+    {
+        input: "100 200",
+        expectedOutput: "300"
+    },
+    {
+        input: "0 0",
+        expectedOutput: "0"
+    },
+    {
+        input: "-1 -1",
+        expectedOutput: "-2"
+    },  
+    {
+        input: "1000000 1000000",
+        expectedOutput: "2000000"
+    },
+    {
+        input: "5 5",
+        expectedOutput: "10"
+    }
+    ];
 
     const tempDir = await createTempFolder();
 
@@ -23,21 +51,23 @@ async function processSubmission(submission: string) {
 
         await compileCpp(tempDir);
 
-        const output = await executeCpp(tempDir, input);
+        for (const testCase of testCases) {
 
-        if(output.trim()===expectedOutput.trim()){
+            const { input, expectedOutput } = testCase;
 
-            console.log("Accepted");
-            console.log("Output of 2+3 is ", output);
+            const output = await executeCpp(tempDir, input);
 
+            if(output.trim()===expectedOutput.trim()){
+                console.log("Output of ",input," is ",output);
+            }
+            else{
+                console.log("Wrong answer on testcase: ",input,"\n expected output: ",expectedOutput,"\n but got: ",output);
+                return;
+            }
         }
-        else{
-
-            console.log("Wrong Answer");
-
-        }
-
+        console.log("Accepted!")
     }
+    
     catch(error){
 
         console.error(error);
