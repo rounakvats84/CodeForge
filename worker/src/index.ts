@@ -8,60 +8,52 @@ const EXECUTABLE_FILE = "main.exe";
 
 import { spawn } from "child_process";
 
+interface TestCase{
+    nums:number[];
+    target:number;
+    expectedOutput:string;
+}
+
 async function processSubmission(submission: string) {
 
     const { code, language, problemId } = JSON.parse(submission);
 
     const testCases = [
     {
-        input: "2 3",
-        expectedOutput: "5"
+        nums: [2, 7, 11, 15],
+        target: 9,
+        expectedOutput: "0 1"
     },
     {
-        input: "10 20",
-        expectedOutput: "30"
+        nums: [3, 2, 4],
+        target: 6,
+        expectedOutput: "1 2"
     },
     {
-        input: "100 200",
-        expectedOutput: "300"
-    },
-    {
-        input: "0 0",
-        expectedOutput: "0"
-    },
-    {
-        input: "-1 -1",
-        expectedOutput: "-2"
-    },  
-    {
-        input: "1000000 1000000",
-        expectedOutput: "2000000"
-    },
-    {
-        input: "5 5",
-        expectedOutput: "10"
+        nums: [3, 3],
+        target: 6,
+        expectedOutput: "0 1"
     }
-    ];
-
+];
     const tempDir = await createTempFolder();
 
     try {
 
-        await writeSourceCode(tempDir, code);
-
-        await compileCpp(tempDir);
-
         for (const testCase of testCases) {
 
-            const { input, expectedOutput } = testCase;
+            const { expectedOutput } = testCase;
 
-            const output = await executeCpp(tempDir, input);
+            await writeSourceCode(tempDir, code, testCase);
+
+            await compileCpp(tempDir);
+
+            const output = await executeCpp(tempDir);
 
             if(output.trim()===expectedOutput.trim()){
-                console.log("Output of ",input," is ",output);
+                console.log("Output of ",testCase," is ",output);
             }
             else{
-                console.log("Wrong answer on testcase: ",input,"\n expected output: ",expectedOutput,"\n but got: ",output);
+                console.log("Wrong answer on testcase: ",testCase,"\n expected output: ",expectedOutput,"\n but got: ",output);
                 return;
             }
         }
@@ -113,9 +105,31 @@ async function createTempFolder(): Promise<string> {
 }
 
 // to add main.cpp file in the temp folder with the code from the submission
-async function writeSourceCode(tempDir: string, code: string): Promise<string> {
+async function writeSourceCode(tempDir: string, code: string, testCase: TestCase): Promise<string> {
+    const generatedCode = `
+#include<bits/stdc++.h>
+
+using namespace std;
+
+${code}
+
+int main(){
+
+    vector<int> nums={${testCase.nums.join(",")}};
+
+    int target=${testCase.target};
+
+    Solution obj;
+
+    vector<int> ans=obj.twoSum(nums,target);
+
+    for(int x:ans)
+        cout<<x<<" ";
+
+}
+`;
     const filePath = path.join(tempDir, SOURCE_FILE);
-    await fs.writeFile(filePath, code, "utf-8");
+    await fs.writeFile(filePath ,generatedCode ,"utf8");
     return filePath;
 }
 
@@ -154,7 +168,7 @@ async function compileCpp(tempDir: string): Promise<void> {
 }
 
 // to execute the executable file in the temp folder and return the output
-async function executeCpp(tempDir: string, input: string): Promise<string> {
+async function executeCpp(tempDir: string): Promise<string> {
     return new Promise((resolve, reject) => {
         const executablePath = path.join(tempDir, EXECUTABLE_FILE);
         const program = spawn(executablePath);
@@ -173,8 +187,6 @@ async function executeCpp(tempDir: string, input: string): Promise<string> {
         program.stderr.on("data", (data: Buffer) => {
             runtimeError += data.toString();
         });
-        program.stdin.write(input + "\n");
-        program.stdin.end();
         program.on("close", (exitCode) => {
             clearTimeout(timeout);
             if (exitCode === 0) {
