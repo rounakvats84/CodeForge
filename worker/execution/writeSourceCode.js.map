@@ -1,0 +1,1 @@
+{"version":3,"file":"writeSourceCode.js","sourceRoot":"","sources":["writeSourceCode.ts"],"names":[],"mappings":";;;;;;AAAA,2DAA6B;AAC7B,gDAAwB;AAEjB,KAAK,0BACR,OAAe,EACf,UAAkB,EAClB,aAAqB;IAGrB,MAAM,QAAQ,GAAC,cAAI,CAAC,IAAI,CAAC,OAAO,EAAC,UAAU,CAAC,CAAC;IAE7C,MAAM,kBAAE,CAAC,SAAS,CACd,QAAQ,EACR,aAAa,EACb,MAAM,CACT,CAAC;IAEF,OAAO,QAAQ,CAAC;AAEpB,CAAC"}

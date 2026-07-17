@@ -17,6 +17,10 @@ app.post("/submit", async (req, res) => {
         // Store in the database
         res.status(200).send("Submission received and stored.");
         console.log("Pushed to redis")
+        console.log(JSON.stringify({
+    language,
+    code
+}, null, 2));
     } catch (error) {
         console.error("Redis error:", error);
         res.status(500).send("Failed to store submission.");
