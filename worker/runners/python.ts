@@ -1,78 +1,33 @@
-import { spawn } from "child_process";
+import path from "path";
+
+import { dockerExec } from "../execution/dockerExec";
+import { generatePythonTwoSum } from "../templates/twoSum";
+import { Runner } from "../types/Runner";
 
 export const sourceFile = "main.py";
 
-import { generatePythonTwoSum } from "../templates/twoSum";
+export async function compilePython(
+    tempDir: string,
+    containerName: string
+): Promise<void> {
 
-export async function compilePython(): Promise<void> {
-
-    // Python is interpreted.
     return;
 
 }
 
-export async function executePython(tempDir: string): Promise<string> {
+export async function executePython(
+    tempDir: string,
+    containerName: string
+): Promise<string> {
 
-    return new Promise((resolve, reject) => {
+    const folderName = path.basename(tempDir);
 
-        const program = spawn(
-            "python",
-            [sourceFile],
-            {
-                cwd: tempDir
-            }
-        );
-
-        let output = "";
-        let runtimeError = "";
-
-        const timeout = setTimeout(() => {
-
-            program.kill();
-
-            reject(
-                new Error("Time Limit Exceeded")
-            );
-
-        }, 2000);
-
-        program.stdout.on("data", (data: Buffer) => {
-
-            output += data.toString();
-
-        });
-
-        program.stderr.on("data", (data: Buffer) => {
-
-            runtimeError += data.toString();
-
-        });
-
-        program.on("close", (exitCode) => {
-
-            clearTimeout(timeout);
-
-            if (exitCode === 0) {
-
-                resolve(output);
-
-            } else {
-
-                reject(
-                    new Error(
-                        runtimeError || "Runtime Error"
-                    )
-                );
-
-            }
-
-        });
-
-    });
+    return dockerExec(containerName, [
+        "python3",
+        `/workspace/temp/${folderName}/${sourceFile}`
+    ]);
 
 }
-
-import { Runner } from "../types/Runner";
 
 export const pythonRunner: Runner = {
 

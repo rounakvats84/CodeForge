@@ -10,11 +10,13 @@ export interface Runner {
     ): string;
 
     compile(
-        tempDir: string
+        tempDir: string,
+        containerName: string
     ): Promise<void>;
 
     execute(
-        tempDir: string
+        tempDir: string,
+        containerName: string
     ): Promise<string>;
 
 }

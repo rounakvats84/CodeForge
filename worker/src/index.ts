@@ -2,13 +2,18 @@ import { createClient } from "redis";
 const client = createClient();
 
 import { TestCase } from "../types/TestCase";
+
 import { createTempFolder } from "../execution/createTempFolder";
 import { cleanup } from "../execution/cleanup";
 import { writeSourceCode } from "../execution/writeSourceCode";
 
+import { createContainer } from "../execution/createContainer";
+import { destroyContainer } from "../execution/destroyContainer";
+
 import { runners } from "../runner-bundler/runners";
 
 async function processSubmission(submission: string) {
+
     const { code, language } = JSON.parse(submission);
 
     console.log("\n================ NEW SUBMISSION ================");
@@ -16,14 +21,14 @@ async function processSubmission(submission: string) {
 
     const runner = runners[language as keyof typeof runners];
 
+    if (!runner) {
+        throw new Error("Unsupported Language");
+    }
+
     console.log("\nRunner Selected:");
     console.log({
         sourceFile: runner.sourceFile
     });
-
-    if (!runner) {
-        throw new Error("Unsupported Language");
-    }
 
     const testCases: TestCase[] = [
         {
@@ -44,6 +49,10 @@ async function processSubmission(submission: string) {
     ];
 
     const tempDir = await createTempFolder();
+    const containerName = await createContainer();
+
+    console.log("\nDocker Container Created:");
+    console.log(containerName);
 
     try {
 
@@ -54,43 +63,66 @@ async function processSubmission(submission: string) {
                 testCase
             );
 
-
             await writeSourceCode(
                 tempDir,
                 runner.sourceFile,
                 generatedCode
             );
 
-            await runner.compile(tempDir);
+            await runner.compile(
+                tempDir,
+                containerName
+            );
 
-            const output = (await runner.execute(tempDir)).trim();
+            const output = (
+                await runner.execute(
+                    tempDir,
+                    containerName
+                )
+            ).trim();
+
             console.log("Expected :", testCase.expectedOutput);
             console.log("Received :", output);
 
-            if(output === testCase.expectedOutput.trim()){
+            if (output === testCase.expectedOutput.trim()) {
+
                 console.log("✅ Test Passed");
-            }
-    
-            else{
+
+            } else {
+
                 console.log("--------------------");
                 console.log("Wrong Answer");
                 console.log("Input:", testCase);
                 console.log("Expected:", testCase.expectedOutput);
                 console.log("Got:", output);
                 console.log("--------------------");
+
                 return;
 
             }
+
         }
 
         console.log("Accepted!");
 
-    }
-    catch (error) {
+    } catch (error) {
 
         console.error("Submission failed:", error);
-    }
-    finally {
+
+    } finally {
+
+        console.log("\nCleaning Up...");
+
+        try {
+
+            await destroyContainer(containerName);
+            console.log("Docker Container Removed.");
+
+        } catch (error) {
+
+            console.error("Failed to remove container:", error);
+
+        }
 
         await cleanup(tempDir);
 
@@ -101,27 +133,46 @@ async function processSubmission(submission: string) {
 async function startWorker() {
 
     try {
+
         await client.connect();
         console.log("Worker connected to Redis.");
 
-        // Main loop
         while (true) {
+
             try {
-                const submission = await client.brPop("problems", 0);
+
+                const submission = await client.brPop(
+                    "problems",
+                    0
+                );
+
                 // @ts-ignore
-                if(!submission) {
-                    continue; // No submission received, continue to the next iteration
+                if (!submission) {
+                    continue;
                 }
+
                 await processSubmission(submission.element);
+
             } catch (error) {
-                console.error("Error processing submission:", error);
-                // Implement your error handling logic here. For example, you might want to push
-                // the submission back onto the queue or log the error to a file.
+
+                console.error(
+                    "Error processing submission:",
+                    error
+                );
+
             }
+
         }
+
     } catch (error) {
-        console.error("Failed to connect to Redis", error);
+
+        console.error(
+            "Failed to connect to Redis",
+            error
+        );
+
     }
+
 }
 
-startWorker();  
+startWorker();

@@ -1,112 +1,40 @@
-import { spawn } from "child_process";
+import path from "path";
+
+import { dockerExec } from "../execution/dockerExec";
+import { generateJavaTwoSum } from "../templates/twoSum";
+import { Runner } from "../types/Runner";
 
 export const sourceFile = "Main.java";
-import { generateJavaTwoSum } from "../templates/twoSum";
 
-export async function compileJava(tempDir: string): Promise<void> {
+export async function compileJava(
+    tempDir: string,
+    containerName: string
+): Promise<void> {
 
-    return new Promise((resolve, reject) => {
+    const folderName = path.basename(tempDir);
 
-        const compiler = spawn(
-            "javac",
-            [sourceFile],
-            {
-                cwd: tempDir
-            }
-        );
-
-        let compileError = "";
-
-        compiler.stderr.on("data", (data: Buffer) => {
-
-            compileError += data.toString();
-
-        });
-
-        compiler.on("close", (exitCode) => {
-
-            if (exitCode === 0) {
-
-                resolve();
-
-            } else {
-
-                reject(
-                    new Error(
-                        compileError || "Compilation Failed"
-                    )
-                );
-
-            }
-
-        });
-
-    });
+    await dockerExec(containerName, [
+        "javac",
+        `/workspace/temp/${folderName}/${sourceFile}`
+    ]);
 
 }
 
-export async function executeJava(tempDir: string): Promise<string> {
+export async function executeJava(
+    tempDir: string,
+    containerName: string
+): Promise<string> {
 
-    return new Promise((resolve, reject) => {
+    const folderName = path.basename(tempDir);
 
-        const program = spawn(
-            "java",
-            ["Main"],
-            {
-                cwd: tempDir
-            }
-        );
-
-        let output = "";
-        let runtimeError = "";
-
-        const timeout = setTimeout(() => {
-
-            program.kill();
-
-            reject(
-                new Error("Time Limit Exceeded")
-            );
-
-        }, 2000);
-
-        program.stdout.on("data", (data: Buffer) => {
-
-            output += data.toString();
-
-        });
-
-        program.stderr.on("data", (data: Buffer) => {
-
-            runtimeError += data.toString();
-
-        });
-
-        program.on("close", (exitCode) => {
-
-            clearTimeout(timeout);
-
-            if (exitCode === 0) {
-
-                resolve(output);
-
-            } else {
-
-                reject(
-                    new Error(
-                        runtimeError || "Runtime Error"
-                    )
-                );
-
-            }
-
-        });
-
-    });
+    return dockerExec(containerName, [
+        "java",
+        "-cp",
+        `/workspace/temp/${folderName}`,
+        "Main"
+    ]);
 
 }
-
-import { Runner } from "../types/Runner";
 
 export const javaRunner: Runner = {
 
