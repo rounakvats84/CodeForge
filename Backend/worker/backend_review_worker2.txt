@@ -1,0 +1,786 @@
+﻿
+
+=== C:\MyFiles\Projects\LC-clone-try1\backend\worker\execution\cleanup.ts ===
+
+import fs from "fs/promises";
+import path from "path";
+
+export async function cleanup(tempDir: string): Promise<void> {
+    await fs.rm(tempDir, {
+        recursive: true,
+        force: true
+    });
+
+}
+
+
+=== C:\MyFiles\Projects\LC-clone-try1\backend\worker\execution\createContainer.ts ===
+
+import { spawn } from "child_process";
+import path from "path";
+
+export async function createContainer(): Promise<string> {
+
+    const hostTempPath = path.resolve("temp");
+
+    return new Promise((resolve, reject) => {
+
+        const containerName = `codeforge-${Date.now()}`;
+
+        const docker = spawn("docker", [
+            "run",
+            "-dit",
+
+            "--name",
+            containerName,
+
+            "--memory=256m",
+            "--cpus=1",
+
+            "-v",
+            `${hostTempPath}:/workspace/temp`,
+
+            "-w",
+            "/workspace",
+
+            "lc-worker",
+
+            "bash"
+        ]);
+
+        let stderr = "";
+
+        docker.stderr.on("data", data => {
+            stderr += data.toString();
+        });
+
+        docker.on("close", code => {
+
+            if (code === 0) {
+                resolve(containerName);
+            } else {
+                reject(new Error(stderr));
+            }
+
+        });
+
+    });
+}
+
+
+=== C:\MyFiles\Projects\LC-clone-try1\backend\worker\execution\createTempFolder.ts ===
+
+import fs from "fs/promises";
+import path from "path";
+
+export async function createTempFolder(): Promise<string> {
+
+    const folderName = Date.now().toString();
+
+    const tempDir = path.join("temp", folderName);
+
+    await fs.mkdir(tempDir, {
+        recursive: true
+    });
+
+    return tempDir;
+
+}
+
+
+=== C:\MyFiles\Projects\LC-clone-try1\backend\worker\execution\destroyContainer.ts ===
+
+import { spawn } from "child_process";
+
+export async function destroyContainer(
+    containerName: string
+): Promise<void> {
+
+    return new Promise((resolve, reject) => {
+
+        const docker = spawn("docker", [
+            "rm",
+            "-f",
+            containerName
+        ]);
+
+        let stderr = "";
+
+        docker.stderr.on("data", data => {
+            stderr += data.toString();
+        });
+
+        docker.on("close", code => {
+
+            if (code === 0) {
+
+                resolve();
+
+            } else {
+
+                reject(new Error(stderr));
+
+            }
+
+        });
+
+    });
+
+}
+
+
+=== C:\MyFiles\Projects\LC-clone-try1\backend\worker\execution\dockerExec.ts ===
+
+import { spawn } from "child_process";
+
+export async function dockerExec(
+    containerName: string,
+    command: string[]
+): Promise<string> {
+
+    return new Promise((resolve, reject) => {
+
+        const docker = spawn("docker", [
+            "exec",
+            containerName,
+            ...command
+        ]);
+
+        let stdout = "";
+        let stderr = "";
+
+        docker.stdout.on("data", data => {
+            stdout += data.toString();
+        });
+
+        docker.stderr.on("data", data => {
+            stderr += data.toString();
+        });
+
+        docker.on("close", code => {
+
+            if (code === 0) {
+
+                resolve(stdout.trim());
+
+            } else {
+
+                reject(new Error(stderr));
+
+            }
+
+        });
+
+    });
+
+}
+
+
+=== C:\MyFiles\Projects\LC-clone-try1\backend\worker\execution\writeSourceCode.ts ===
+
+import fs from "fs/promises";
+import path from "path";
+
+export async function writeSourceCode(
+    tempDir: string,
+    sourceFile: string,
+    generatedCode: string
+): Promise<string>{
+
+    const filePath=path.join(tempDir,sourceFile);
+
+    await fs.writeFile(
+        filePath,
+        generatedCode,
+        "utf8"
+    );
+
+    return filePath;
+
+}
+
+
+=== C:\MyFiles\Projects\LC-clone-try1\backend\worker\prisma\schema.prisma ===
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum SubmissionStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  ERROR
+}
+
+enum Verdict {
+  ACCEPTED
+  WRONG_ANSWER
+  TIME_LIMIT_EXCEEDED
+  RUNTIME_ERROR
+  COMPILATION_ERROR
+}
+
+enum Difficulty {
+  EASY
+  MEDIUM
+  HARD
+}
+
+model User {
+  id           String   @id @default(cuid())
+  username     String   @unique
+  email        String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+
+  submissions Submission[]
+}
+
+model Problem {
+  id          String     @id @default(cuid())
+  title       String     @unique
+  description String
+  difficulty  Difficulty // This maps the enum type properly to your problem model
+
+  starterCodeCpp    String
+  starterCodeJava   String
+  starterCodePython String
+
+  visibleTestCases Json
+  hiddenTestCases  Json
+
+  submissions Submission[]
+}
+
+model Submission {
+  id        String @id 
+  userId    String
+  problemId String
+
+  language String
+  code     String
+
+  status  SubmissionStatus @default(QUEUED)
+  verdict Verdict?
+
+  runtime Int?
+  memory  Int?
+
+  createdAt   DateTime  @default(now())
+  completedAt DateTime?
+
+  user    User    @relation(fields: [userId], references: [id])
+  problem Problem @relation(fields: [problemId], references: [id])
+}
+
+
+=== C:\MyFiles\Projects\LC-clone-try1\backend\worker\runner-bundler\runners.ts ===
+
+import { cppRunner } from "../runners/cpp";
+import { pythonRunner } from "../runners/python";
+import { javaRunner } from "../runners/java";
+
+export const runners = {
+    cpp: cppRunner,
+    python: pythonRunner,
+    java: javaRunner
+};
+
+
+=== C:\MyFiles\Projects\LC-clone-try1\backend\worker\runners\cpp.ts ===
+
+import path from "path";
+
+import { dockerExec } from "../execution/dockerExec";
+import { generateCppTwoSum } from "../templates/twoSum";
+import { Runner } from "../types/Runner";
+
+export const sourceFile = "main.cpp";
+export const executableFile = "main";
+
+export async function compileCpp(
+    tempDir: string,
+    containerName: string
+): Promise<void> {
+
+    const folderName = path.basename(tempDir);
+
+    await dockerExec(containerName, [
+        "g++",
+        `/workspace/temp/${folderName}/${sourceFile}`,
+        "-o",
+        `/workspace/temp/${folderName}/${executableFile}`
+    ]);
+
+}
+
+export async function executeCpp(
+    tempDir: string,
+    containerName: string
+): Promise<string> {
+
+    const folderName = path.basename(tempDir);
+
+    return dockerExec(containerName, [
+        `/workspace/temp/${folderName}/${executableFile}`
+    ]);
+
+}
+
+export const cppRunner: Runner = {
+
+    sourceFile,
+
+    generateSourceCode: generateCppTwoSum,
+
+    compile: compileCpp,
+
+    execute: executeCpp
+
+};
+
+
+=== C:\MyFiles\Projects\LC-clone-try1\backend\worker\runners\java.ts ===
+
+import path from "path";
+
+import { dockerExec } from "../execution/dockerExec";
+import { generateJavaTwoSum } from "../templates/twoSum";
+import { Runner } from "../types/Runner";
+
+export const sourceFile = "Main.java";
+
+export async function compileJava(
+    tempDir: string,
+    containerName: string
+): Promise<void> {
+
+    const folderName = path.basename(tempDir);
+
+    await dockerExec(containerName, [
+        "javac",
+        `/workspace/temp/${folderName}/${sourceFile}`
+    ]);
+
+}
+
+export async function executeJava(
+    tempDir: string,
+    containerName: string
+): Promise<string> {
+
+    const folderName = path.basename(tempDir);
+
+    return dockerExec(containerName, [
+        "java",
+        "-cp",
+        `/workspace/temp/${folderName}`,
+        "Main"
+    ]);
+
+}
+
+export const javaRunner: Runner = {
+
+    sourceFile,
+
+    generateSourceCode: generateJavaTwoSum,
+
+    compile: compileJava,
+
+    execute: executeJava
+
+};
+
+
+=== C:\MyFiles\Projects\LC-clone-try1\backend\worker\runners\python.ts ===
+
+import path from "path";
+
+import { dockerExec } from "../execution/dockerExec";
+import { generatePythonTwoSum } from "../templates/twoSum";
+import { Runner } from "../types/Runner";
+
+export const sourceFile = "main.py";
+
+export async function compilePython(
+    tempDir: string,
+    containerName: string
+): Promise<void> {
+
+    return;
+
+}
+
+export async function executePython(
+    tempDir: string,
+    containerName: string
+): Promise<string> {
+
+    const folderName = path.basename(tempDir);
+
+    return dockerExec(containerName, [
+        "python3",
+        `/workspace/temp/${folderName}/${sourceFile}`
+    ]);
+
+}
+
+export const pythonRunner: Runner = {
+
+    sourceFile,
+
+    generateSourceCode: generatePythonTwoSum,
+
+    compile: compilePython,
+
+    execute: executePython
+
+};
+
+
+=== C:\MyFiles\Projects\LC-clone-try1\backend\worker\src\config\prisma.ts ===
+
+import { PrismaClient } from "@prisma/client";
+
+const prisma = new PrismaClient();
+
+export default prisma;
+
+
+=== C:\MyFiles\Projects\LC-clone-try1\backend\worker\src\config\redis.ts ===
+
+import "dotenv/config";
+import { createClient } from "redis";
+
+const redisUrl = process.env.REDIS_URL;
+if (!redisUrl) {
+    throw new Error("REDIS_URL environment variable is not set");
+}
+
+const redis = createClient({
+    url: redisUrl
+});
+
+redis.on("error", (err) => {
+    console.error("Redis Error:", err);
+});
+
+export const connectRedis = async () => {
+    await redis.connect();
+    console.log("Worker connected to Redis");
+};
+
+export default redis;
+
+
+=== C:\MyFiles\Projects\LC-clone-try1\backend\worker\src\services\judge.service.ts ===
+
+import prisma from "../config/prisma";
+import { runners } from "../../runner-bundler/runners";
+import { createTempFolder } from "../../execution/createTempFolder";
+import { cleanup } from "../../execution/cleanup";
+import { writeSourceCode } from "../../execution/writeSourceCode";
+import { createContainer } from "../../execution/createContainer";
+import { destroyContainer } from "../../execution/destroyContainer";
+
+export async function judgeSubmission(payload: string) {
+    const { submissionId, problemId, language, code } = JSON.parse(payload);
+
+    console.log(`\n================ JUDGING SUBMISSION: ${submissionId} ================`);
+
+    // 1. Update status to RUNNING
+    await prisma.submission.update({
+        where: { id: submissionId },
+        data: { status: "RUNNING" },
+    });
+
+    const tempDir = await createTempFolder();
+    let containerName = "";
+
+    try {
+        // 2. Fetch Problem & Test Cases from PostgreSQL
+        const problem = await prisma.problem.findUnique({
+            where: { id: problemId }
+        });
+
+        if (!problem) {
+            throw new Error(`Problem ${problemId} not found`);
+        }
+
+        // Combine visible and hidden test cases
+        const testCases = [
+            ...(problem.visibleTestCases as any[] || []),
+            ...(problem.hiddenTestCases as any[] || [])
+        ];
+
+        const runner = runners[language as keyof typeof runners];
+        if (!runner) {
+            throw new Error(`Unsupported Language: ${language}`);
+        }
+
+        containerName = await createContainer();
+        console.log(`Docker Container Created: ${containerName}`);
+
+        let allPassed = true;
+        let maxRuntime = 0;
+        let finalVerdict = "ACCEPTED";
+
+        // 3. Execute against all test cases
+        for (const testCase of testCases) {
+            const generatedCode = runner.generateSourceCode(code, testCase);
+
+            await writeSourceCode(tempDir, runner.sourceFile, generatedCode);
+
+            try {
+                await runner.compile(tempDir, containerName);
+            } catch (compileError) {
+                finalVerdict = "COMPILATION_ERROR";
+                allPassed = false;
+                break;
+            }
+
+            try {
+                const startTime = Date.now();
+                const output = (await runner.execute(tempDir, containerName)).trim();
+                const runtime = Date.now() - startTime;
+                
+                maxRuntime = Math.max(maxRuntime, runtime);
+
+                if (output !== String(testCase.expectedOutput).trim()) {
+                    finalVerdict = "WRONG_ANSWER";
+                    allPassed = false;
+                    break;
+                }
+            } catch (runtimeError) {
+                finalVerdict = "RUNTIME_ERROR";
+                allPassed = false;
+                break;
+            }
+        }
+
+        // 4. Update the final submission result
+        await prisma.submission.update({
+            where: { id: submissionId },
+            data: {
+                status: "COMPLETED",
+                verdict: finalVerdict as any,
+                runtime: maxRuntime,
+                memory: 0, // Placeholder for Phase 1
+                completedAt: new Date(),
+            },
+        });
+
+        console.log(`Judging Finished: ${finalVerdict}`);
+
+    } catch (error) {
+        console.error("Worker Execution Error:", error);
+        
+        // Handle unexpected worker crashes
+        await prisma.submission.update({
+            where: { id: submissionId },
+            data: {
+                status: "ERROR",
+                completedAt: new Date(),
+            },
+        });
+    } finally {
+        if (containerName) {
+            try {
+                await destroyContainer(containerName);
+            } catch (err) {
+                console.error("Failed to remove container:", err);
+            }
+        }
+        await cleanup(tempDir);
+    }
+}
+
+
+=== C:\MyFiles\Projects\LC-clone-try1\backend\worker\src\index.ts ===
+
+import { connectRedis } from "./config/redis";
+import redis from "./config/redis";
+import { judgeSubmission } from "./services/judge.service";
+
+async function startWorker() {
+    try {
+        await connectRedis();
+
+        while (true) {
+            try {
+                // Ensure we are listening to the exact same queue name used in the API
+                const submission = await redis.brPop("submissionQueue", 0);
+
+                if (!submission) {
+                    continue;
+                }
+
+                await judgeSubmission(submission.element);
+
+            } catch (error) {
+                console.error("Error processing submission payload:", error);
+            }
+        }
+    } catch (error) {
+        console.error("Failed to start worker system:", error);
+        process.exit(1);
+    }
+}
+
+startWorker();
+
+
+=== C:\MyFiles\Projects\LC-clone-try1\backend\worker\templates\twoSum.ts ===
+
+import { TestCase } from "../types/TestCase";
+
+export function generateCppTwoSum(
+    code: string,
+    testCase: TestCase
+): string {
+
+    return `
+#include<bits/stdc++.h>
+
+using namespace std;
+
+${code}
+
+int main(){
+
+    vector<int> nums={${testCase.nums.join(",")}};
+
+    int target=${testCase.target};
+
+    Solution obj;
+
+    vector<int> ans=obj.twoSum(nums,target);
+
+    for(int x:ans)
+        cout<<x<<" ";
+
+}
+`;
+
+}
+
+export function generatePythonTwoSum(
+    code: string,
+    testCase: TestCase
+): string {
+
+    return `
+${code}
+
+nums=[${testCase.nums.join(",")}]
+
+target=${testCase.target}
+
+obj=Solution()
+
+ans=obj.twoSum(nums,target)
+
+print(*ans)
+`;
+
+}
+
+export function generateJavaTwoSum(
+    code: string,
+    testCase: TestCase
+): string {
+
+    return `
+import java.util.*;
+
+${code}
+
+public class Main{
+
+    public static void main(String[] args){
+
+        int[] nums={${testCase.nums.join(",")}};
+
+        int target=${testCase.target};
+
+        Solution obj=new Solution();
+
+        int[] ans=obj.twoSum(nums,target);
+
+        for(int x:ans)
+            System.out.print(x+" ");
+
+    }
+
+}
+`;
+
+}
+
+
+=== C:\MyFiles\Projects\LC-clone-try1\backend\worker\types\Runner.ts ===
+
+import { TestCase } from "./TestCase";
+
+export interface Runner {
+
+    sourceFile: string;
+
+    generateSourceCode(
+        code: string,
+        testCase: TestCase
+    ): string;
+
+    compile(
+        tempDir: string,
+        containerName: string
+    ): Promise<void>;
+
+    execute(
+        tempDir: string,
+        containerName: string
+    ): Promise<string>;
+
+}
+
+
+=== C:\MyFiles\Projects\LC-clone-try1\backend\worker\types\TestCase.ts ===
+
+export interface TestCase {
+
+    nums: number[];
+
+    target: number;
+
+    expectedOutput: string;
+
+}
+
+
+=== C:\MyFiles\Projects\LC-clone-try1\backend\worker\utils\compareOutput.ts ===
+
+
+
+=== C:\MyFiles\Projects\LC-clone-try1\backend\worker\prisma.config.ts ===
+
+// This file was generated by Prisma, and assumes you have installed the following:
+// npm install --save-dev prisma dotenv
+import "dotenv/config";
+import { defineConfig } from "prisma/config";
+
+export default defineConfig({
+  schema: "prisma/schema.prisma",
+  migrations: {
+    path: "prisma/migrations",
+  },
+  datasource: {
+    url: process.env["DATABASE_URL"],
+  },
+});

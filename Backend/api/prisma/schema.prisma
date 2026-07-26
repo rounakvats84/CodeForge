@@ -1,0 +1,79 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum SubmissionStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  ERROR
+}
+
+enum Verdict {
+  ACCEPTED
+  WRONG_ANSWER
+  TIME_LIMIT_EXCEEDED
+  RUNTIME_ERROR
+  COMPILATION_ERROR
+}
+
+enum Difficulty {
+  EASY
+  MEDIUM
+  HARD
+}
+
+model User {
+  id           String   @id @default(cuid())
+  username     String   @unique
+  email        String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+
+  submissions Submission[]
+}
+
+// (Keep your Enums and User model the same)
+
+model Problem {
+  id          String     @id @default(cuid())
+  title       String     @unique
+  description String
+  difficulty  Difficulty
+
+  // Replaced starterCode with execution templates
+  templateCpp    String
+  templateJava   String
+  templatePython String
+
+  visibleTestCases Json
+  hiddenTestCases  Json
+
+  submissions Submission[]
+}
+
+model Submission {
+  id        String @id 
+  userId    String
+  problemId String
+
+  language String
+  code     String
+
+  status  SubmissionStatus @default(QUEUED)
+  verdict Verdict?
+  testCaseFailure Json? 
+
+  runtime Int?
+  memory  Int?
+
+  createdAt   DateTime  @default(now())
+  completedAt DateTime?
+
+  user    User    @relation(fields: [userId], references: [id])
+  problem Problem @relation(fields: [problemId], references: [id])
+}
