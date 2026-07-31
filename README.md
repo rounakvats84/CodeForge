@@ -1,40 +1,41 @@
 # Online Judge Platform
 
-A full-stack online coding platform inspired by LeetCode, built with a scalable backend architecture using Node.js, Express, PostgreSQL, Prisma, Redis, Docker, and TypeScript.
+A scalable LeetCode-inspired coding platform built using a distributed backend architecture with Node.js, Express, PostgreSQL, Prisma, Redis, Docker, Socket.IO, and TypeScript.
 
-The project allows authenticated users to solve coding problems, submit solutions in multiple programming languages, and have those submissions evaluated asynchronously by a dedicated worker service.
+The platform supports secure authentication, asynchronous code execution, real-time submission updates, and multi-language judging through an isolated worker system.
 
 ---
 
 # Features
 
-## User Authentication
+## Authentication
 
-- Register
-- Login
-- Logout
+- User Registration
+- User Login
 - JWT Authentication
-- HttpOnly Cookie-based Authentication
+- HttpOnly Cookie Authentication
 - Protected Routes
+- Logout
 
 ---
 
 ## Problem Management
 
 - Fetch all coding problems
-- Fetch problem details
+- Fetch individual problem details
 - Difficulty levels
 - Visible test cases
-- Hidden test cases (used only during judging)
+- Hidden test cases
+- Language-specific execution templates
 
 ---
 
 ## Submission System
 
 - Create submissions
-- Store submission history
-- View individual submissions
-- Track submission status
+- View submission history
+- View submission details
+- Submission status tracking
 
 Submission lifecycle:
 
@@ -48,94 +49,130 @@ COMPLETED
 
 ---
 
-## Asynchronous Judging
+## Asynchronous Code Execution
 
-Submissions are processed asynchronously using Redis.
+Submissions are processed asynchronously using Redis queues.
 
 Flow:
 
 ```text
 Client
-    │
-    ▼
+
+↓
+
 Express API
-    │
-    ▼
-PostgreSQL
-(Store Submission)
-    │
-    ▼
+
+↓
+
+Store Submission
+
+↓
+
 Redis Queue
-    │
-    ▼
+
+↓
+
 Worker
-    │
-    ▼
+
+↓
+
 Docker Execution
-    │
-    ▼
-Judge Test Cases
-    │
-    ▼
-Update Submission
+
+↓
+
+Judge Solution
+
+↓
+
+Update Database
 ```
+
+---
+
+## Real-Time Updates
+
+Submission progress is delivered instantly using Redis Pub/Sub and Socket.IO.
+
+Flow:
+
+```text
+Worker
+
+↓
+
+Redis Pub/Sub
+
+↓
+
+WebSocket Server
+
+↓
+
+Browser
+```
+
+Users receive submission updates without refreshing the page.
 
 ---
 
 ## Multi-language Support
 
-Currently supported:
+Supported languages:
 
 - C++
 - Java
 - Python
 
-Each problem stores language-specific execution templates that the worker uses to build runnable programs dynamically.
+Each problem contains language-specific execution templates used by the worker to generate executable source code dynamically.
 
 ---
 
 # Tech Stack
 
-## Backend API
+## Backend
 
 - Node.js
 - Express.js
 - TypeScript
-- Prisma ORM
-- PostgreSQL
-- JWT
-- bcrypt
-- Redis
-
----
-
-## Worker
-
-- Node.js
-- TypeScript
-- Prisma
-- Redis
-- Docker
 
 ---
 
 ## Database
 
-PostgreSQL
-
-Tables:
-
-- Users
-- Problems
-- Submissions
+- PostgreSQL
+- Prisma ORM
 
 ---
 
-## Infrastructure
+## Authentication
+
+- JWT
+- bcrypt
+- HttpOnly Cookies
+
+---
+
+## Queue
+
+- Redis Lists
+
+---
+
+## Pub/Sub
+
+- Redis Pub/Sub
+
+---
+
+## Real-time Communication
+
+- Socket.IO
+
+---
+
+## Code Execution
 
 - Docker
-- Redis
-- Prisma ORM
 
 ---
 
@@ -143,7 +180,7 @@ Tables:
 
 ```text
 backend/
-│
+
 ├── api/
 │   ├── src/
 │   │   ├── config/
@@ -156,153 +193,167 @@ backend/
 │   │
 │   └── prisma/
 │
-└── worker/
+├── worker/
+│   ├── src/
+│   │   ├── config/
+│   │   ├── docker/
+│   │   ├── services/
+│   │   ├── utils/
+│   │   └── index.ts
+│
+└── websocket/
     ├── src/
     │   ├── config/
-    │   ├── docker/
+    │   ├── socket/
     │   ├── services/
-    │   ├── utils/
     │   └── index.ts
 ```
 
 ---
 
-# Backend Architecture
+# Architecture
 
-The API follows a layered architecture.
+## Primary Backend
+
+Responsible for:
+
+- Authentication
+- Problem APIs
+- Submission APIs
+- Database Operations
+- Queueing submissions
+
+---
+
+## Worker
+
+Responsible for:
+
+- Consuming Redis Queue
+- Fetching problems
+- Building executable source
+- Running Docker containers
+- Judging submissions
+- Updating database
+- Publishing submission results
+
+---
+
+## WebSocket Server
+
+Responsible for:
+
+- Maintaining persistent Socket.IO connections
+- Subscribing to Redis Pub/Sub
+- Delivering submission updates to connected clients
+
+---
+
+# Distributed System Flow
 
 ```text
-Route
+Browser
+    │
+    ├──────────────┐
+    │              │
+REST API      Socket.IO
+    │              │
+    ▼              ▼
+Express API   WebSocket Server
+    │              ▲
+    ▼              │
+Redis Queue    Redis Pub/Sub
+    │              ▲
+    ▼              │
+ Worker ───────────┘
     │
     ▼
-Controller
+ Docker
     │
     ▼
-Service
-    │
-    ▼
-Prisma / Redis
-```
-
-The worker is responsible only for code execution and judging.
-
-```text
-Redis
-    │
-    ▼
-Worker
-    │
-    ▼
-Fetch Problem
-    │
-    ▼
-Generate Runnable Source
-    │
-    ▼
-Docker Execution
-    │
-    ▼
-Judge Test Cases
-    │
-    ▼
-Update Database
+PostgreSQL
 ```
 
 ---
 
 # Current Status
 
-Completed
+Backend Core
 
 - Authentication
-- JWT Authorization
+- Authorization
+- JWT
 - Cookie Authentication
-- Problems API
-- Submission API
-- PostgreSQL Integration
+- Problem APIs
+- Submission APIs
 - Prisma ORM
+- PostgreSQL
+
+Distributed Processing
+
 - Redis Queue
 - Worker Service
-- Docker Code Execution
-- C++ Support
-- Java Support
-- Python Support
-- Submission Tracking
-- Multi-language Templates
-- End-to-End Judging Pipeline
+- Docker Sandbox
+- Multi-language Execution
+
+Real-Time Communication
+
+- Redis Pub/Sub
+- Socket.IO
+- Live Submission Updates
 
 ---
 
 # Planned Features
 
-- Frontend (React)
-- Monaco Code Editor
-- Live Submission Status (WebSockets)
-- Redis Pub/Sub
-- Real-time Judge Updates
-- Code Draft Auto-save
+Frontend
+
+- React
+- Tailwind CSS
+- Monaco Editor
+- Problem Workspace
+- Submission Panel
+
+Editor
+
+- Auto Save
+- Draft Recovery
+- Code Reset
+- Language Switching
+
+Platform
+
 - User Profiles
-- Contest Support
-- Discussion Section
 - Leaderboards
-- Rate Limiting
+- Contest Mode
+- Discussion Section
 - Admin Dashboard
 
 ---
 
-# Getting Started
+# Learning Objectives
 
-Clone the repository
-
-```bash
-git clone <repository-url>
-```
-
-Install dependencies
-
-```bash
-npm install
-```
-
-Run PostgreSQL
-
-Run Redis
-
-Start the backend
-
-```bash
-npm run dev
-```
-
-Start the worker
-
-```bash
-npm run worker
-```
-
-The API and worker will communicate through Redis to process submissions asynchronously.
-
----
-
-# Learning Goals
-
-This project is built to gain hands-on experience with:
+This project was built to gain practical experience with:
 
 - Backend Architecture
+- Distributed Systems
 - REST APIs
 - Authentication
-- Asynchronous Processing
 - Redis
+- Queue-based Processing
+- Pub/Sub Messaging
+- WebSockets
 - Docker
-- Code Execution Sandboxing
-- Database Design
-- Distributed Systems
-- Scalable System Design
+- Online Judge Design
+- System Design
+- Scalable Backend Development
 
 ---
 
-## Project Status
+# Project Status
 
-🚧 Backend MVP Completed
+🚧 Backend Platform Completed
 
-Frontend and real-time features are currently under development.
+The core backend architecture, asynchronous judging pipeline, and real-time communication layer are complete.
+
+The remaining work focuses primarily on the React frontend, Monaco editor integration, and user interface.

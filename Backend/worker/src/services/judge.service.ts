@@ -6,6 +6,8 @@ import { writeSourceCode } from "../../execution/writeSourceCode";
 import { createContainer } from "../../execution/createContainer";
 import { destroyContainer } from "../../execution/destroyContainer";
 
+import { publisher } from "../config/redis"; 
+
 export async function judgeSubmission(payload: string) {
     const { submissionId, problemId, language, code } = JSON.parse(payload);
 
@@ -26,7 +28,6 @@ export async function judgeSubmission(payload: string) {
 
         if (!problem) throw new Error(`Problem ${problemId} not found`);
 
-        // Get the correct DB template based on language
         let template = "";
         if (language === "cpp") template = problem.templateCpp;
         else if (language === "java") template = problem.templateJava;
@@ -37,6 +38,7 @@ export async function judgeSubmission(payload: string) {
         const visibleTestCases = (problem.visibleTestCases as any[]) || [];
         const hiddenTestCases = (problem.hiddenTestCases as any[]) || [];
         const testCases = [...visibleTestCases, ...hiddenTestCases];
+        const totalTestCases = testCases.length;
 
         const runner = runners[language as keyof typeof runners];
         if (!runner) throw new Error(`Unsupported Language: ${language}`);
@@ -44,30 +46,34 @@ export async function judgeSubmission(payload: string) {
         containerName = await createContainer();
         console.log(`Docker Container Created: ${containerName}`);
 
-        let allPassed = true;
+        let passedTestCases = 0;
         let maxRuntime = 0;
         let finalVerdict = "ACCEPTED";
-        let failedTestCaseDetails: any = undefined;
+        
+        // Error tracking variables
+        let failedTestCase = null;
+        let failedInput = null;
+        let expectedOut = null;
+        let actualOut = null;
+        let compilerErr = null;
+        let runtimeErr = null;
 
-        for (let i = 0; i < testCases.length; i++) {
+        for (let i = 0; i < totalTestCases; i++) {
             const testCase = testCases[i];
-            const isHidden = i >= visibleTestCases.length;
             
-            console.log(`\n--- Running Test Case ${i + 1} (${isHidden ? 'HIDDEN' : 'VISIBLE'}) ---`);
-            
-            // Pass the DB template to the generic generator
             const generatedCode = runner.generateSourceCode(code, testCase, template);
-
             await writeSourceCode(tempDir, runner.sourceFile, generatedCode);
 
+            // 1. Compilation Phase
             try {
                 await runner.compile(tempDir, containerName);
-            } catch (compileError) {
+            } catch (compileError: any) {
                 finalVerdict = "COMPILATION_ERROR";
-                allPassed = false;
+                compilerErr = compileError.message || String(compileError);
                 break;
             }
 
+            // 2. Execution Phase
             try {
                 const startTime = Date.now();
                 const output = (await runner.execute(tempDir, containerName)).trim();
@@ -76,57 +82,58 @@ export async function judgeSubmission(payload: string) {
                 maxRuntime = Math.max(maxRuntime, runtime);
                 const expected = String(testCase.expectedOutput).trim();
 
-                console.log(`Received : ${output}`);
-
                 if (output !== expected) {
                     finalVerdict = "WRONG_ANSWER";
-                    allPassed = false;
-                    failedTestCaseDetails = {
-                        input: testCase, 
-                        expected: expected,
-                        actual: output
-                    };
-                    console.log("❌ Verdict: WRONG_ANSWER");
+                    failedTestCase = i + 1;
+                    failedInput = `nums=[${testCase.nums}], target=${testCase.target}`;
+                    expectedOut = expected;
+                    actualOut = output;
                     break; 
                 } else {
-                    console.log("✅ Passed");
+                    passedTestCases++;
                 }
-            } catch (runtimeError: any) {
-                // Check if our dockerExec threw the timeout error
-                if (runtimeError.message === "TIME_LIMIT_EXCEEDED") {
+            } catch (error: any) {
+                if (error.message === "TIME_LIMIT_EXCEEDED") {
                     finalVerdict = "TIME_LIMIT_EXCEEDED";
-                    console.log("❌ Verdict: TIME_LIMIT_EXCEEDED");
                 } else {
                     finalVerdict = "RUNTIME_ERROR";
-                    console.log("❌ Verdict: RUNTIME_ERROR");
+                    runtimeErr = error.message || String(error);
                 }
                 
-                allPassed = false;
-                
-                // Save the failure details for the frontend
-                failedTestCaseDetails = {
-                    input: testCase,
-                    expected: String(testCase.expectedOutput).trim(),
-                    actual: finalVerdict // Show the user they got a TLE or Runtime Error
-                };
-                
+                failedTestCase = i + 1;
+                failedInput = `nums=[${testCase.nums}], target=${testCase.target}`;
                 break;
             }
         }
 
+        // 3. Save the exact state to the Database
         await prisma.submission.update({
             where: { id: submissionId },
             data: {
                 status: "COMPLETED",
                 verdict: finalVerdict as any,
-                testCaseFailure: failedTestCaseDetails,
-                runtime: maxRuntime,
-                memory: 0, 
+                passedTestCases,
+                totalTestCases,
+                failedTestCase,
+                input: failedInput,
+                expectedOutput: expectedOut,
+                actualOutput: actualOut,
+                compilerOutput: compilerErr,
+                runtimeError: runtimeErr,
+                runtime: finalVerdict === "ACCEPTED" ? maxRuntime : null,
+                memory: finalVerdict === "ACCEPTED" ? 0 : null,
                 completedAt: new Date(),
             },
         });
 
         console.log(`\n================ FINAL VERDICT: ${finalVerdict} ================`);
+
+        // 4. Publish the exact DB record to Redis Pub/Sub        
+        await publisher.publish(
+            `submission:${submissionId}`,
+            JSON.stringify(await prisma.submission.findUnique({ where: { id: submissionId } }))
+        );
+        console.log(`Broadcasted result to channel: submission:${submissionId}`);
 
     } catch (error) {
         console.error("Worker Execution Error:", error);

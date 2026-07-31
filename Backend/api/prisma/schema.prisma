@@ -66,7 +66,19 @@ model Submission {
 
   status  SubmissionStatus @default(QUEUED)
   verdict Verdict?
-  testCaseFailure Json? 
+
+  // --- Detailed Execution Results ---
+  passedTestCases Int?
+  totalTestCases  Int?
+  failedTestCase  Int?
+
+  input          String?
+  expectedOutput String?
+  actualOutput   String?
+
+  compilerOutput String?
+  runtimeError   String?
+  // ----------------------------------
 
   runtime Int?
   memory  Int?
