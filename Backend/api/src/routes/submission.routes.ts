@@ -4,6 +4,7 @@ import {
     createSubmission,
     getSubmissionById,
     getUserSubmissions,
+    createSubmissionForRun,
 } from "../controllers/submission.controller";
 
 import authenticate from "../middleware/auth.middleware";
@@ -11,6 +12,8 @@ import authenticate from "../middleware/auth.middleware";
 const router = Router();
 
 router.post("/", authenticate, createSubmission);
+
+router.post("/run", authenticate, createSubmissionForRun);
 
 router.get("/", authenticate, getUserSubmissions);
 

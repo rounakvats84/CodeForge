@@ -3,6 +3,7 @@ import {
     createSubmissionService,
     getUserSubmissionsService,
     getSubmissionByIdService,
+    createSubmissionForRunService,
 } from "../services/submission.service";
 
 export const createSubmission = async (
@@ -11,13 +12,39 @@ export const createSubmission = async (
     next: NextFunction
 ) => {
     try {
-        const { problemId, language, code } = req.body;
+        const { problemId, language, code , executionType } = req.body;
 
         const submission = await createSubmissionService({
             userId: req.user!.id,
             problemId,
             language,
             code,
+            executionType: "SUBMIT",
+        });
+
+        return res.status(201).json({
+            success: true,
+            data: submission,
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const createSubmissionForRun = async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+) => {
+    try {
+        const { problemId, language, code , executionType } = req.body;
+
+        const submission = await createSubmissionForRunService({
+            userId: req.user!.id,
+            problemId,
+            language,
+            code,
+            executionType: "RUN",
         });
 
         return res.status(201).json({

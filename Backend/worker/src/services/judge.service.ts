@@ -9,14 +9,21 @@ import { destroyContainer } from "../../execution/destroyContainer";
 import { publisher } from "../config/redis"; 
 
 export async function judgeSubmission(payload: string) {
-    const { submissionId, problemId, language, code } = JSON.parse(payload);
+    const { submissionId, problemId, language, code, executionType = "SUBMIT" } = JSON.parse(payload);
 
-    console.log(`\n================ JUDGING SUBMISSION: ${submissionId} ================`);
+    console.log(`\n================ JUDGING: ${submissionId} [${executionType}] ================`);
 
-    await prisma.submission.update({
-        where: { id: submissionId },
-        data: { status: "RUNNING" },
-    });
+    if (executionType === "SUBMIT") {
+        await prisma.submission.update({
+            where: { id: submissionId },
+            data: { status: "RUNNING" },
+        });
+    }
+
+    await publisher.publish(
+        `submission:${submissionId}`, 
+        JSON.stringify({ id: submissionId, status: "RUNNING", executionType })
+    );
 
     const tempDir = await createTempFolder();
     let containerName = "";
@@ -37,7 +44,11 @@ export async function judgeSubmission(payload: string) {
 
         const visibleTestCases = (problem.visibleTestCases as any[]) || [];
         const hiddenTestCases = (problem.hiddenTestCases as any[]) || [];
-        const testCases = [...visibleTestCases, ...hiddenTestCases];
+        
+        const testCases = executionType === "RUN" 
+            ? visibleTestCases 
+            : [...visibleTestCases, ...hiddenTestCases];
+            
         const totalTestCases = testCases.length;
 
         const runner = runners[language as keyof typeof runners];
@@ -50,13 +61,11 @@ export async function judgeSubmission(payload: string) {
         let maxRuntime = 0;
         let finalVerdict = "ACCEPTED";
         
-        // Error tracking variables
         let failedTestCase = null;
-        let failedInput = null;
-        let expectedOut = null;
-        let actualOut = null;
         let compilerErr = null;
         let runtimeErr = null;
+
+        const runResults: any[] = [];
 
         for (let i = 0; i < totalTestCases; i++) {
             const testCase = testCases[i];
@@ -64,7 +73,13 @@ export async function judgeSubmission(payload: string) {
             const generatedCode = runner.generateSourceCode(code, testCase, template);
             await writeSourceCode(tempDir, runner.sourceFile, generatedCode);
 
-            // 1. Compilation Phase
+            const { expectedOutput, _id, ...inputsOnly } = testCase;
+            const formattedInput = Object.entries(inputsOnly)
+                .map(([key, val]) => `${key} = ${JSON.stringify(val)}`)
+                .join("\n");
+
+            const expected = String(testCase.expectedOutput).trim();
+
             try {
                 await runner.compile(tempDir, containerName);
             } catch (compileError: any) {
@@ -73,24 +88,35 @@ export async function judgeSubmission(payload: string) {
                 break;
             }
 
-            // 2. Execution Phase
             try {
                 const startTime = Date.now();
                 const output = (await runner.execute(tempDir, containerName)).trim();
                 const runtime = Date.now() - startTime;
                 
                 maxRuntime = Math.max(maxRuntime, runtime);
-                const expected = String(testCase.expectedOutput).trim();
 
                 if (output !== expected) {
                     finalVerdict = "WRONG_ANSWER";
                     failedTestCase = i + 1;
-                    failedInput = `nums=[${testCase.nums}], target=${testCase.target}`;
-                    expectedOut = expected;
-                    actualOut = output;
+                    
+                    runResults.push({
+                        caseNumber: i + 1,
+                        input: formattedInput,
+                        expectedOutput: expected,
+                        actualOutput: output,
+                        passed: false
+                    });
+                    
                     break; 
                 } else {
                     passedTestCases++;
+                    runResults.push({
+                        caseNumber: i + 1,
+                        input: formattedInput,
+                        expectedOutput: expected,
+                        actualOutput: output,
+                        passed: true
+                    });
                 }
             } catch (error: any) {
                 if (error.message === "TIME_LIMIT_EXCEEDED") {
@@ -101,46 +127,71 @@ export async function judgeSubmission(payload: string) {
                 }
                 
                 failedTestCase = i + 1;
-                failedInput = `nums=[${testCase.nums}], target=${testCase.target}`;
+                
+                runResults.push({
+                    caseNumber: i + 1,
+                    input: formattedInput,
+                    expectedOutput: expected,
+                    actualOutput: "Error: Execution Terminated",
+                    passed: false
+                });
                 break;
             }
         }
 
-        // 3. Save the exact state to the Database
-        await prisma.submission.update({
-            where: { id: submissionId },
-            data: {
-                status: "COMPLETED",
-                verdict: finalVerdict as any,
-                passedTestCases,
-                totalTestCases,
-                failedTestCase,
-                input: failedInput,
-                expectedOutput: expectedOut,
-                actualOutput: actualOut,
-                compilerOutput: compilerErr,
-                runtimeError: runtimeErr,
-                runtime: finalVerdict === "ACCEPTED" ? maxRuntime : null,
-                memory: finalVerdict === "ACCEPTED" ? 0 : null,
-                completedAt: new Date(),
-            },
-        });
-
         console.log(`\n================ FINAL VERDICT: ${finalVerdict} ================`);
 
-        // 4. Publish the exact DB record to Redis Pub/Sub        
-        await publisher.publish(
-            `submission:${submissionId}`,
-            JSON.stringify(await prisma.submission.findUnique({ where: { id: submissionId } }))
-        );
+        const resultPayload = {
+            id: submissionId,
+            status: "COMPLETED",
+            verdict: finalVerdict,
+            passedTestCases,
+            totalTestCases,
+            failedTestCase,
+            compilerOutput: compilerErr,
+            runtimeError: runtimeErr,
+            runtime: finalVerdict === "ACCEPTED" ? maxRuntime : null,
+            memory: finalVerdict === "ACCEPTED" ? 0 : null,
+            completedAt: new Date(),
+            executionType,
+            runResults,
+            code,      // <-- ADDED THIS so frontend gets the snapshot
+            language,  // <-- ADDED THIS to label the code block properly
+        };
+
+        if (executionType === "SUBMIT") {
+            await prisma.submission.update({
+                where: { id: submissionId },
+                data: {
+                    status: "COMPLETED",
+                    verdict: finalVerdict as any,
+                    passedTestCases,
+                    totalTestCases,
+                    failedTestCase,
+                    compilerOutput: compilerErr,
+                    runtimeError: runtimeErr,
+                    runtime: finalVerdict === "ACCEPTED" ? maxRuntime : null,
+                    memory: finalVerdict === "ACCEPTED" ? 0 : null,
+                    completedAt: new Date(),
+                },
+            });
+        }
+
+        await publisher.publish(`submission:${submissionId}`, JSON.stringify(resultPayload));
         console.log(`Broadcasted result to channel: submission:${submissionId}`);
 
-    } catch (error) {
+    } catch (error: any) {
         console.error("Worker Execution Error:", error);
-        await prisma.submission.update({
-            where: { id: submissionId },
-            data: { status: "ERROR", completedAt: new Date() },
-        });
+        if (executionType === "SUBMIT") {
+            await prisma.submission.update({
+                where: { id: submissionId },
+                data: { status: "ERROR", completedAt: new Date() },
+            });
+        }
+        await publisher.publish(
+            `submission:${submissionId}`, 
+            JSON.stringify({ id: submissionId, status: "ERROR", executionType, error: error.message })
+        );
     } finally {
         if (containerName) {
             try { await destroyContainer(containerName); } catch (err) {}

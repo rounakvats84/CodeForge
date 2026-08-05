@@ -2,11 +2,14 @@ import crypto from "crypto";
 import prisma from "../config/prisma";
 import redis from "../config/redis";
 
+type ExecutionType = "RUN" | "SUBMIT";
+
 export const createSubmissionService = async (data: {
     userId: string;
     problemId: string;
     language: string;
     code: string;
+    executionType: ExecutionType;
 }) => {
     // 1. Validate problem exists before doing anything
     const problem = await prisma.problem.findUnique({
@@ -45,6 +48,7 @@ export const createSubmissionService = async (data: {
             problemId: data.problemId,
             language: data.language,
             code: data.code,
+            executionType: data.executionType, 
         });
 
         // Renamed queue to be more accurate
@@ -63,6 +67,66 @@ export const createSubmissionService = async (data: {
         status: submission.status,
     };
 };
+
+export const createSubmissionForRunService = async (data: {
+    userId: string;
+    problemId: string;
+    language: string;
+    code: string;
+    executionType: ExecutionType;
+}) => {
+    // 1. Validate problem exists before doing anything
+    const problem = await prisma.problem.findUnique({
+        where: { id: data.problemId },
+        select: { id: true },
+    });
+
+    if (!problem) {
+        throw new Error("Problem not found");
+    }
+
+    // 2. Generate UUID
+    const submissionId = crypto.randomUUID();
+
+    // 3. Create QUEUED row in DB
+    // const submission = await prisma.submission.create({
+    //     data: {
+    //         id: submissionId,
+    //         userId: data.userId,
+    //         problemId: data.problemId,
+    //         language: data.language,
+    //         code: data.code,
+    //         status: "QUEUED",
+    //     },
+    //     select: {
+    //         id: true,
+    //         status: true,
+    //     },
+    // });
+
+    // 4. Try pushing to Redis, rollback DB insert if it fails
+    try {
+        const queuePayload = JSON.stringify({
+            submissionId: submissionId,
+            userId: data.userId, // Added userId so worker doesn't need to fetch it
+            problemId: data.problemId,
+            language: data.language,
+            code: data.code,
+            executionType: data.executionType,
+        });
+
+        // Renamed queue to be more accurate
+        await redis.lPush("submissionQueue", queuePayload);
+    } catch (error) {
+        throw new Error("Failed to queue submission. Please try again.");
+    }
+
+    // 5. Return only what the frontend actually needs
+    return {
+        id: submissionId,
+    };
+};
+
 
 export const getUserSubmissionsService = async (userId: string) => {
     const submissions = await prisma.submission.findMany({

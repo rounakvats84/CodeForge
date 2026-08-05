@@ -1,0 +1,116 @@
+@import "@fontsource/geist-sans/400.css";
+@import "@fontsource/geist-sans/500.css";
+@import "@fontsource/geist-sans/600.css";
+@import "@fontsource/geist-sans/700.css";
+@import "@fontsource/geist-mono/400.css";
+@import "@fontsource/geist-mono/500.css";
+@import "@fontsource/geist-mono/600.css";
+@import "@fontsource/geist-mono/700.css";
+
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Geist Mono", ui-monospace, SFMono-Regular, monospace;
+  --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+body {
+  @apply bg-zinc-950 text-zinc-50 font-sans antialiased;
+}
+
+/* =========================================
+   Uiverse.io Loader by alexruix
+   ========================================= */
+.uv-loader-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.uv-loader {
+  width: 80px;
+  height: 16px;
+  position: relative;
+}
+
+.uv-loader-text {
+  color: #C8B6FF;
+  animation: text_713 3.5s ease both infinite;
+  font-size: 0.8rem;
+  letter-spacing: 1px;
+}
+
+.uv-load {
+  background-color: #9A79FF;
+  border-radius: 50px;
+  display: block;
+  height: 16px;
+  width: 16px;
+  position: absolute;
+  transform: translateX(64px);
+  animation: loading_713 3.5s ease both infinite;
+}
+
+.uv-load::before {
+  position: absolute;
+  content: "";
+  width: 100%;
+  height: 100%;
+  background-color: #D1C2FF;
+  border-radius: inherit;
+  animation: loading2_713 3.5s ease both infinite;
+}
+
+@keyframes text_713 {
+  0% { letter-spacing: 1px; transform: translateX(0px); }
+  40% { letter-spacing: 2px; transform: translateX(26px); }
+  80% { letter-spacing: 1px; transform: translateX(32px); }
+  90% { letter-spacing: 2px; transform: translateX(0px); }
+  100% { letter-spacing: 1px; transform: translateX(0px); }
+}
+
+@keyframes loading_713 {
+  0% { width: 16px; transform: translateX(0px); }
+  40% { width: 100%; transform: translateX(0px); }
+  80% { width: 16px; transform: translateX(64px); }
+  90% { width: 100%; transform: translateX(0px); }
+  100% { width: 16px; transform: translateX(0px); }
+}
+
+@keyframes loading2_713 {
+  0% { transform: translateX(0px); width: 16px; }
+  40% { transform: translateX(0%); width: 80%; }
+  80% { width: 100%; transform: translateX(0px); }
+  90% { width: 80%; transform: translateX(15px); }
+  100% { transform: translateX(0px); width: 16px; }
+}
+
+/* =========================================
+   Custom Premium Scrollbars (NeetCode Style)
+   ========================================= */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 1px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: #3f3f46; /* zinc-700: Elegant dark grey */
+  border-radius: 20px;
+  /* Adding a border matching the background makes the thumb look even thinner */
+  border: 2px solid #09090b; 
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: #52525b; /* zinc-600 */
+}
+
+/* For Firefox compatibility */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #3f3f46 transparent;
+}

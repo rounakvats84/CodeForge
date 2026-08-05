@@ -22,9 +22,8 @@ export const getProblemByIdService = async (problemId: string) => {
             title: true,
             description: true,
             difficulty: true,
-            templateCpp: true,
-            templateJava: true,
-            templatePython: true,
+            hints: true,
+            topics: true,
             visibleTestCases: true,
         },
     });

@@ -45,6 +45,9 @@ model Problem {
   description String
   difficulty  Difficulty
 
+  hints       String[]     @default([])
+  topics      String[]     @default([])
+
   // Replaced starterCode with execution templates
   templateCpp    String
   templateJava   String
@@ -88,4 +91,21 @@ model Submission {
 
   user    User    @relation(fields: [userId], references: [id])
   problem Problem @relation(fields: [problemId], references: [id])
+}
+
+model EditorState {
+  id        String   @id @default(uuid())
+  userId    String
+  problemId String
+  
+  // The user's active code state
+  codeCpp   String?  @db.Text
+  codeJava  String?  @db.Text
+  codePython String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Ensures one state per user per problem
+  @@unique([userId, problemId])
 }
