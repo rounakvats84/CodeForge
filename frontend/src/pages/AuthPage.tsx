@@ -1,177 +1,167 @@
 import { useState } from "react";
 import axios from "axios";
-import { useNavigate } from "react-router-dom";
-import { 
-  Card, 
-  CardContent, 
-  CardHeader, 
-  CardTitle 
-} from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
 
-interface AuthPageProps {
-  checkAuth: () => Promise<void>;
-}
+export default function AuthPage() {
+    const [isLogin, setIsLogin] = useState(true);
+    const [showPassword, setShowPassword] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const [loading, setLoading] = useState(false);
 
-export default function AuthPage({ checkAuth }: AuthPageProps) {
-  const navigate = useNavigate();
-  const [isLogin, setIsLogin] = useState(true);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+    const [formData, setFormData] = useState({
+        username: "",
+        email: "",
+        password: "",
+    });
 
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [username, setUsername] = useState("");
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        setFormData({ ...formData, [e.target.name]: e.target.value });
+        setError(null); 
+    };
 
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    setError(null);
-    setLoading(true);
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setLoading(true);
+        setError(null);
 
-    try {
-      if (isLogin) {
-        await axios.post("http://localhost:3000/auth/login", { email, password });
-      } else {
-        await axios.post("http://localhost:3000/auth/register", { username, email, password });
-      }
-      await checkAuth();
-      navigate("/problems");
-    } catch (err: any) {
-      // ✅ This will print the exact API error to your browser's console (F12)
-      console.error("🔴 Auth API Error:", err.response || err);
-      
-      setError(
-        err.response?.data?.message || 
-        (isLogin ? "Invalid credentials. Please try again." : "Registration failed. Please try again.")
-      );
-    } finally {
-      setLoading(false);
-    }
-  };
+        try {
+            const endpoint = isLogin ? "/auth/login" : "/auth/register";
+            const res = await axios.post(
+                `http://localhost:3000${endpoint}`,
+                isLogin ? { email: formData.email, password: formData.password } : formData,
+                { withCredentials: true }
+            );
 
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-zinc-950 p-4 relative overflow-hidden">
-      
-      {/* Subtle radial background glow behind the card */}
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.02)_0,transparent_40%)] pointer-events-none" />
+            if (res.data.success) {
+                window.location.href = "/"; 
+            }
+        } catch (err: any) {
+            if (err.response?.data?.errors) {
+                setError(err.response.data.errors[0].message);
+            } else {
+                setError(err.response?.data?.message || "An error occurred");
+            }
+        } finally {
+            setLoading(false);
+        }
+    };
 
-      <div className="w-full max-w-[380px] flex flex-col items-center space-y-4 z-10">
-        
-        {/* Logo */}
-        <div className="flex flex-col items-center text-center space-y-3 mb-2">
-          <div className="h-10 w-10 bg-zinc-100 rounded-[10px] flex items-center justify-center shadow-sm">
-            <span className="text-zinc-950 font-bold text-xl tracking-tighter">CF</span>
-          </div>
-          <h1 className="text-xl font-semibold tracking-tight text-zinc-100">CodeForge</h1>
-        </div>
+    return (
+        <div className="min-h-screen flex flex-col pt-[12vh] items-center bg-[#09090b] text-zinc-100 font-sans">
+            
+            {/* Logo Assembly */}
+            <div className="flex flex-col items-center mb-6">
+                <div className="w-10 h-10 bg-zinc-100 rounded-md flex items-center justify-center text-[#09090b] font-bold text-xl mb-3 shadow-sm">
+                    CF
+                </div>
+                <h1 className="text-xl font-bold tracking-wide">CodeForge</h1>
+            </div>
 
-        {error && (
-          <div className="w-full p-3 bg-red-500/10 border border-red-500/20 text-red-400 text-xs rounded-lg text-center font-medium">
-            {error}
-          </div>
-        )}
-
-        {/* 
-          CARD STYLING UPDATE:
-          - Ultra-thin border: border-white/[0.03]
-          - Inner top highlight: inset_0_1px_0_rgba(255,255,255,0.05)
-          - Deep outer shadow: 0_20px_40px_-15px_rgba(0,0,0,0.8)
-        */}
-        <Card className="w-full relative bg-[#121214] border border-white/[0.03] text-zinc-100 shadow-[0_20px_40px_-15px_rgba(0,0,0,0.8),inset_0_1px_0_rgba(255,255,255,0.05)] rounded-2xl overflow-hidden">
-          
-          {/* Shader Effect: Fades inward from top to bottom */}
-          <div className="absolute inset-0 bg-gradient-to-b from-white/[0.04] to-transparent pointer-events-none" />
-
-          {/* Everything below needs relative z-10 so it sits above the background gradient */}
-          <div className="relative z-10">
-            <CardHeader className="space-y-1 pt-8 pb-4 px-8">
-              <CardTitle className="text-lg text-center font-medium tracking-wide">
-                {isLogin ? "Sign In" : "Create Account"}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="px-8 pb-8">
-              <form onSubmit={handleSubmit} className="space-y-4">
+            {/* Reduced width from max-w-md (448px) to max-w-[400px] */}
+            <div className="w-full max-w-[400px] p-8 bg-[#121214] border border-white/[0.04] rounded-2xl shadow-xl">
                 
-                {!isLogin && (
-                  <div className="space-y-2">
-                    <Label htmlFor="username" className="text-xs text-zinc-400 font-medium">Username</Label>
-                    <Input 
-                      id="username" 
-                      placeholder="Enter your Username"
-                      value={username}
-                      onChange={(e) => setUsername(e.target.value)}
-                      required={!isLogin} 
-                      className="bg-[#18181B] border-[rgba(255,255,255,0.05)] text-xs h-10 text-zinc-100 placeholder:text-zinc-600 focus-visible:ring-1 focus-visible:ring-blue-500 focus-visible:border-blue-500 transition-all duration-200 rounded-lg"
-                    />
-                  </div>
+                {/* Reduced margin-bottom to pull the inputs closer */}
+                <h2 className="text-2xl font-bold tracking-tight mb-5 text-center">
+                    {isLogin ? "Welcome back" : "Create an account"}
+                </h2>
+
+                {error && (
+                    <div className="mb-4 p-3 bg-red-500/10 border border-red-500/20 rounded-md text-sm text-red-400">
+                        {error}
+                    </div>
                 )}
 
-                <div className="space-y-2">
-                  <Label htmlFor="email" className="text-xs text-zinc-400 font-medium">Email</Label>
-                  <Input 
-                    id="email" 
-                    type="email"
-                    placeholder="Enter your Email" 
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    required 
-                    className="bg-[#18181B] border-[rgba(255,255,255,0.05)] text-xs h-10 text-zinc-100 placeholder:text-zinc-600 focus-visible:ring-1 focus-visible:ring-blue-500 focus-visible:border-blue-500 transition-all duration-200 rounded-lg"
-                  />
-                </div>
+                <form onSubmit={handleSubmit} className="space-y-4">
+                    {!isLogin && (
+                        <div className="space-y-1.5">
+                            <label className="text-sm font-medium text-zinc-300">Username</label>
+                            <input
+                                type="text"
+                                name="username"
+                                value={formData.username}
+                                onChange={handleChange}
+                                required={!isLogin}
+                                minLength={3}
+                                maxLength={20}
+                                pattern="[a-zA-Z]+"
+                                title="Letters only, no spaces or special characters"
+                                className="w-full px-4 py-2 bg-[#1e1e20] border border-white/[0.04] rounded-lg text-sm text-zinc-100 outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 transition-all"
+                                placeholder="johndoe"
+                            />
+                        </div>
+                    )}
 
-                <div className="space-y-2">
-                  <Label htmlFor="password" className="text-xs text-zinc-400 font-medium">Password</Label>
-                  <Input 
-                    id="password" 
-                    type="password"
-                    placeholder="Enter your Password" 
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    required 
-                    className="bg-[#18181B] border-[rgba(255,255,255,0.05)] text-xs h-10 text-zinc-100 placeholder:text-zinc-600 focus-visible:ring-1 focus-visible:ring-blue-500 focus-visible:border-blue-500 transition-all duration-200 rounded-lg"
-                  />
-                </div>
+                    <div className="space-y-1.5">
+                        <label className="text-sm font-medium text-zinc-300">Email</label>
+                        <input
+                            type="email"
+                            name="email"
+                            value={formData.email}
+                            onChange={handleChange}
+                            required
+                            className="w-full px-4 py-2 bg-[#1e1e20] border border-white/[0.04] rounded-lg text-sm text-zinc-100 outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 transition-all"
+                            placeholder="you@example.com"
+                        />
+                    </div>
 
-                <Button 
-                  type="submit" 
-                  className="w-full bg-zinc-200 text-zinc-900 hover:bg-zinc-100 font-semibold h-10 text-xs mt-4 shadow-sm transition-colors duration-200 rounded-lg" 
-                  disabled={loading}
-                >
-                  {loading ? "Processing..." : (isLogin ? "Sign In" : "Sign Up")}
-                </Button>
-              </form>
+                    <div className="space-y-1.5">
+                        <label className="text-sm font-medium text-zinc-300">Password</label>
+                        <div className="relative">
+                            <input
+                                type={showPassword ? "text" : "password"}
+                                name="password"
+                                value={formData.password}
+                                onChange={handleChange}
+                                required
+                                minLength={8}
+                                className="w-full px-4 py-2 pr-10 bg-[#1e1e20] border border-white/[0.04] rounded-lg text-sm text-zinc-100 outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 transition-all"
+                                placeholder="••••••••"
+                            />
+                            <button
+                                type="button"
+                                onClick={() => setShowPassword(!showPassword)}
+                                className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300 transition-colors"
+                            >
+                                {showPassword ? (
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+                                        <line x1="1" y1="1" x2="23" y2="23"></line>
+                                    </svg>
+                                ) : (
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                                        <circle cx="12" cy="12" r="3"></circle>
+                                    </svg>
+                                )}
+                            </button>
+                        </div>
+                        {!isLogin && (
+                            <p className="text-[11px] text-zinc-500 mt-1">
+                                Must be 8+ characters with a letter, number, and special character.
+                            </p>
+                        )}
+                    </div>
 
-              <div className="mt-6 text-center text-xs text-zinc-500">
-                {isLogin ? (
-                  <p>
-                    Don't have an account?{" "}
-                    <button 
-                      type="button" 
-                      onClick={() => { setIsLogin(false); setError(null); }}
-                      className="text-zinc-400 hover:text-zinc-200 transition-colors duration-200 focus:outline-none"
+                    <button
+                        type="submit"
+                        disabled={loading}
+                        className="w-full py-2.5 mt-2 bg-emerald-600/90 hover:bg-emerald-500 text-white text-sm font-semibold rounded-lg shadow-sm transition-all disabled:opacity-50"
                     >
-                      Sign Up
+                        {loading ? "Processing..." : isLogin ? "Sign In" : "Create Account"}
                     </button>
-                  </p>
-                ) : (
-                  <p>
-                    Have an account?{" "}
-                    <button 
-                      type="button" 
-                      onClick={() => { setIsLogin(true); setError(null); }}
-                      className="text-zinc-400 hover:text-zinc-200 transition-colors duration-200 focus:outline-none"
+                </form>
+
+                <div className="mt-6 text-center">
+                    <button
+                        onClick={() => {
+                            setIsLogin(!isLogin);
+                            setError(null);
+                        }}
+                        className="text-sm text-zinc-400 hover:text-zinc-200 transition-colors"
                     >
-                      Sign In
+                        {isLogin ? "Don't have an account? Sign up" : "Already have an account? Sign in"}
                     </button>
-                  </p>
-                )}
-              </div>
-            </CardContent>
-          </div>
-        </Card>
-      </div>
-    </div>
-  );
-}
+                </div>
+            </div>
+        </div>
+    );
+} 

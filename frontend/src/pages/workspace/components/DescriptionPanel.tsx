@@ -11,7 +11,6 @@ interface DescriptionPanelProps {
 export default function DescriptionPanel({ problem, submitResult, onClearSubmit, onViewPastSubmission }: DescriptionPanelProps) {
   const [activeTab, setActiveTab] = useState<"description" | "submissions">("description");
   
-  // NEW: State for the submissions list
   const [submissionsList, setSubmissionsList] = useState<any[]>([]);
   const [isLoadingSubmissions, setIsLoadingSubmissions] = useState(false);
 
@@ -26,17 +25,19 @@ export default function DescriptionPanel({ problem, submitResult, onClearSubmit,
 
   const formatInput = (testCase: any) => {
     if (!testCase) return "";
-    const { expectedOutput, _id, ...inputs } = testCase;
+    const { expectedOutput, explanation, _id, ...inputs } = testCase; 
     return Object.entries(inputs)
       .map(([key, value]) => `${key} = ${JSON.stringify(value)}`)
       .join(", ");
   };
 
+  // ENHANCED: Safely handles any number of spaces and formats into array brackets
   const formatOutput = (str: string | undefined | null) => {
     if (!str) return "";
     let trimmed = String(str).trim();
     if (!trimmed.startsWith("[") && trimmed.includes(" ")) {
-      return `[${trimmed.split(" ").join(", ")}]`;
+      // Split by any amount of whitespace and join with comma
+      return `[${trimmed.split(/\s+/).join(", ")}]`;
     }
     return trimmed;
   };
@@ -50,21 +51,18 @@ export default function DescriptionPanel({ problem, submitResult, onClearSubmit,
     });
   };
 
-  // NEW: Formatter for just the date (MM/DD/YYYY)
   const formatJustDate = (dateString: string) => {
     if (!dateString) return "";
     const d = new Date(dateString);
     return d.toLocaleDateString("en-US", { month: '2-digit', day: '2-digit', year: 'numeric' });
   };
 
-  // NEW: Fetch all submissions when the tab is clicked
   const handleSubmissionsClick = async () => {
     setActiveTab("submissions");
     setIsLoadingSubmissions(true);
     try {
       const res = await axios.get(`http://localhost:3000/submissions`, { withCredentials: true });
       if (res.data.success) {
-        // Filter out only the submissions for the current problem
         const problemSubmissions = res.data.data.filter((s: any) => s.problemId === problem.id);
         setSubmissionsList(problemSubmissions);
       }
@@ -75,7 +73,6 @@ export default function DescriptionPanel({ problem, submitResult, onClearSubmit,
     }
   };
 
-  // NEW: Fetch specific submission details and open overlay
   const handleViewSubmissionDetails = async (submissionId: string) => {
     try {
       const res = await axios.get(`http://localhost:3000/submissions/${submissionId}`, { withCredentials: true });
@@ -87,9 +84,6 @@ export default function DescriptionPanel({ problem, submitResult, onClearSubmit,
     }
   };
 
-  // ==========================================
-  // FULL PANEL SUBMISSION OVERLAY RENDERER
-  // ==========================================
   if (submitResult) {
     const { 
       status, verdict, passedTestCases, totalTestCases, 
@@ -243,9 +237,6 @@ export default function DescriptionPanel({ problem, submitResult, onClearSubmit,
     );
   }
 
-  // ==========================================
-  // NORMAL DESCRIPTION PANEL
-  // ==========================================
   return (
     <div className="flex flex-col h-full bg-[#121214] border border-white/[0.04] rounded-xl overflow-hidden">
       <div className="flex bg-[#121214] h-11 px-2 items-end shrink-0 border-b border-white/[0.04]">
@@ -286,15 +277,23 @@ export default function DescriptionPanel({ problem, submitResult, onClearSubmit,
                 {problem.visibleTestCases.map((tc: any, index: number) => (
                   <div key={index} className="space-y-2">
                     <p className="font-bold text-zinc-200 text-sm">Example {index + 1}:</p>
-                    <div className="pl-4 border-l-2 border-white/[0.1] space-y-1">
+                    <div className="pl-4 border-l-2 border-white/[0.1] space-y-2">
                       <p className="text-sm">
                         <span className="font-semibold text-zinc-400">Input: </span> 
                         <span className="font-mono text-zinc-300">{formatInput(tc)}</span>
                       </p>
+                      {/* APPLYING THE FORMATTER HERE */}
                       <p className="text-sm">
                         <span className="font-semibold text-zinc-400">Output: </span> 
-                        <span className="font-mono text-zinc-300">{tc.expectedOutput}</span>
+                        <span className="font-mono text-zinc-300">{formatOutput(tc.expectedOutput)}</span>
                       </p>
+                      
+                      {(tc.explanation || (index === 0 && problem.explanation)) && (
+                        <p className="text-sm leading-relaxed">
+                          <span className="font-semibold text-zinc-400">Explanation: </span> 
+                          <span className="text-zinc-300">{tc.explanation || problem.explanation}</span>
+                        </p>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -336,7 +335,6 @@ export default function DescriptionPanel({ problem, submitResult, onClearSubmit,
           </div>
         )}
         
-        {/* NEW: SUBMISSIONS LIST VIEW */}
         {activeTab === "submissions" && (
           <div className="h-full">
             {isLoadingSubmissions ? (
@@ -354,14 +352,12 @@ export default function DescriptionPanel({ problem, submitResult, onClearSubmit,
               </div>
             ) : (
               <div className="space-y-2">
-                {/* Headers */}
                 <div className="flex justify-between px-6 py-3 text-[12px] font-bold text-zinc-500 uppercase tracking-wider">
                   <div className="w-1/3">Submission</div>
                   <div className="w-1/3 text-center">Language</div>
                   <div className="w-1/3 text-right">Runtime</div>
                 </div>
 
-                {/* Alternating Submissions Tiles */}
                 <div className="flex flex-col gap-1">
                   {submissionsList.map((sub, idx) => (
                     <div 
@@ -393,4 +389,4 @@ export default function DescriptionPanel({ problem, submitResult, onClearSubmit,
       </div>
     </div>
   );
-}   
+}

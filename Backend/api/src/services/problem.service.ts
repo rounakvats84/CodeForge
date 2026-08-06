@@ -25,6 +25,7 @@ export const getProblemByIdService = async (problemId: string) => {
             hints: true,
             topics: true,
             visibleTestCases: true,
+            explanation: true,
         },
     });
 
