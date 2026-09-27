@@ -13,13 +13,13 @@ const app = express();
 app.use(
     cors({
         origin: process.env.CLIENT_URL || "http://localhost:5173",
-        credentials: true,
+        credentials: true,  // Allow cookies to be sent with requests
     })
 );
 
-app.use(express.json());
+app.use(express.json());  // Middleware to parse JSON bodies/data from incoming requests
 
-app.use(cookieParser());
+app.use(cookieParser());  // Middleware to parse cookies from incoming requests
 
 app.use("/auth", authRoutes);
 app.use("/problems", problemRoutes);
